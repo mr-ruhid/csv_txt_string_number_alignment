@@ -1,36 +1,35 @@
 import re
 
-# FILE NAMES (You can change them to your own file names)
-orijinal_turkce_fayl = 'tr.txt'         # Orijinal, düzgün strukturlu Türkcə faylınız
-deep_tercume_fayli = 'az_deepl.txt'      # DeepL-dən gələn, sətirləri qarışmış Azərbaycan dili faylınız
-duzelmis_fayl = 'az_hizalanmis.txt'     # Kodun çıxaracağı tam düzgün yeni fayl
+# Fayl adları (Birbaşa .csv formatında işləyir)
+orijinal_ingilis_fayli = 'en.csv'
+deep_tercume_fayli = 'az_deepl.csv'
+yeni_duzelmis_fayl = 'az_final_hizalanmis.csv'
 
-print("Fayllar analiz edilir...")
+print("1. Orijinal İngilis dili (.csv) strukturu və boşluqları oxunur...")
+with open(orijinal_ingilis_fayli, 'r', encoding='utf-8') as f:
+    en_setirler = f.readlines()
 
-# 1. orjinal fayildaki id-leri oyrenir
-with open(orijinal_turkce_fayl, 'r', encoding='utf-8') as f:
-    orijinal_setirler = f.readlines()
-
-# 2. tercumeden gelen fayillari bir yere toplayir
+print("2. DeepL-dən gələn qarışmış Azərbaycan dili mətni oxunur...")
 with open(deep_tercume_fayli, 'r', encoding='utf-8') as f:
     deepl_metni = f.read()
 
-# bosluqlari normallasdirma
-# oyunun daxili <br> kodlarini qoruyuruq
+# DeepL-in mətni təmizlənir, lakin oyun kodları qorunur
 deepl_metni_temiz = re.sub(r'\s+', ' ', deepl_metni)
 
-yeni_fayl_iceriyi = []
-son_tapilan_index = 0
+yeni_csv_iceriyi = []
+xeta_sayi = 0
 
-print("Hizalanma və bərpa prosesi başladı...")
+print("3. İngilis dili bazası əsasında milimetrik hizalanma və bərpaya başlanıldı...")
 
-for setir in orijinal_setirler:
-    # basliqlari saxlama
+for setir in en_setirler:
+    # Başlıq sətirlərini (;meta və s.) olduğu kimi qoruyuruq
     if setir.startswith(';') or not setir.strip():
-        yeni_fayl_iceriyi.append(setir)
+        yeni_csv_iceriyi.append(setir)
         continue
     
-    # setirlik hisselere bolme: ID | HEX | KeyStr | Text
+    # Sətirin əvvəlindəki orijinal boşluqları (indentation) milimetrik olaraq götürürük
+    baslangic_bosluqlari = setir[:len(setir) - len(setir.lstrip())]
+    
     hisseler = setir.split('|')
     if len(hisseler) >= 4:
         id_num = hisseler[0].strip()
@@ -38,27 +37,33 @@ for setir in orijinal_setirler:
         keystr = hisseler[2].strip()
         orijinal_text = hisseler[3].strip()
         
-        # orjinalda metin yoxdursa ustunden kec
+        # Əgər İngilis dilində bu ID-nin qarşısı boşdursa, elə boş saxlayırıq
         if not orijinal_text:
-            yeni_fayl_iceriyi.append(f"   {id_num}|{hex_num}|{keystr}|\n")
+            yeni_csv_iceriyi.append(f"{baslangic_bosluqlari}{id_num}|{hex_num}|{keystr}|\n")
             continue
             
-        # id axtarma
-        # id uygunlasdirma
+        # REGEX FƏNDİ: DeepL-in qarışdırdığı mətnin içində bu ID-ni axtarırıq.
+        # Əgər bu ID başqa bir sözün arxasına yapışıbsa belə (\s* və ya bitişik), 
+        # kod onu ordan tapır, qoparır və aşağı sətirə salır.
         pattern = rf"{id_num}\s*\|\s*{hex_num}\s*\|\s*{keystr}\s*\|(.*?)(?=\s*\d+\s*\||$)"
         match = re.search(pattern, deepl_metni_temiz)
         
         if match:
             az_text = match.group(1).strip()
-            yeni_fayl_iceriyi.append(f"   {id_num}|{hex_num}|{keystr}|{az_text}\n")
+            # Orijinal İngilis dili boşluqları və ID-si ilə Azərbaycan mətnini birləşdiririk
+            yeni_csv_iceriyi.append(f"{baslangic_bosluqlari}{id_num}|{hex_num}|{keystr}|{az_text}\n")
         else:
-            # tercumede itmis hisseleri tap
-            # iki fayil arasinda problem varsa id itmir ancaq altdaki bildirisi alacaqssiniz
-            yeni_fayl_iceriyi.append(f"   {id_num}|{hex_num}|{keystr}| [WARNING: There is a mistake here.] {orijinal_text}\n")
+            # Əgər DeepL bu ID-ni tamamilə məhv edibsə, oyunun çökməməsi üçün
+            # bura köhnə DIQQET yazımızı qoyuruq və yanına İngilis mətni yazırıq ki, harada xəta var biləsiniz.
+            xeta_sayi += 1
+            yeni_csv_iceriyi.append(f"{baslangic_bosluqlari}{id_num}|{hex_num}|{keystr}|[DIQQET: Tercume İtib və ya Birləsib] {orijinal_text}\n")
 
-# fayl save
-with open(duzelmis_fayl, 'w', encoding='utf-8') as f:
-    f.writelines(yeni_fayl_iceriyi)
+# Yeni .csv faylını yazırıq
+with open(yeni_duzelmis_fayl, 'w', encoding='utf-8') as f:
+    f.writelines(yeni_csv_iceriyi)
 
-print(f"\nİş tamamlandı! Hizalanmış yeni faylınız hazır: {duzelmis_fayl}")
-print("İndi Notepad++ ilə baxsanız, hər rəqəmin öz qarşısında öz mətni duracaq.")
+print("\n==================================================")
+print(f"UĞURLU! Yeni fayl yaradıldı: {yeni_duzelmis_fayl}")
+print(f"İngilis dili ID-ləri və boşluqları 100% bərpa olundu.")
+print(f"Birləşən sətirlər aşağı çəkildi. Cəmi {xeta_sayi} sətirdə [DIQQET] bərpası lazım oldu.")
+print("==================================================")
